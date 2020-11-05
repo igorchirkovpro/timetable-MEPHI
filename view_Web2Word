@@ -1,0 +1,230 @@
+import sys
+from mpl_toolkits.mplot3d import Axes3D
+import numpy as np
+
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtGui import QPixmap
+from PyQt5.QtWidgets import *
+from PyQt5.QtCore import QSize, Qt
+
+import model
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+import networkx as nx
+
+
+class Web2Word(QWidget):
+    G = nx.Graph()
+    pos = None
+    cut_list = None
+    From = None
+    To = None
+    GraphShow = None
+
+    def __init__(self, application):
+        super().__init__()
+        self.application = application
+        self.gui()
+
+        # подключение стилей css из файла
+        f = open('css.stylesheet', 'r')
+        self.styleData = f.read()
+        f.close()
+        self.setStyleSheet(self.styleData)
+
+    def gui(self):
+        self.setWindowIcon(QtGui.QIcon('img/W_icon.png'))
+        self.setWindowTitle('Web2Word v0.1')
+        self.resize(1440, 900)
+        self.showFullScreen()        #на весь экран
+        self.setWindowFlags(QtCore.Qt.Window | QtCore.Qt.MSWindowsFixedSizeDialogHint)
+
+        # установка фоновой картинки / оставил на всякий случай
+        # self.label = QLabel(self)
+        # self.pixmap = QPixmap('img/background.png')
+        # self.label.setPixmap(self.pixmap)
+        # self.label.resize(self.pixmap.width(), self.pixmap.height())
+
+        # 1 Group
+        self.radio2word = QRadioButton("&2 буквы")
+        self.radio3word = QRadioButton("&3 буквы")
+        self.radio2word.setChecked(True)
+        self.btnGenerator = QtWidgets.QPushButton("&Сгенерировать")
+        self.btnGenerator.clicked.connect(self.click_generate)
+        self.btnGenerator.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.countSignGroup = QtWidgets.QGroupBox("&Длина слов")
+        self.vbox1 = QtWidgets.QVBoxLayout()
+        self.vbox1.addWidget(self.radio2word)
+        self.vbox1.addWidget(self.radio3word)
+        self.vbox1.addWidget(self.btnGenerator)
+        self.countSignGroup.setLayout(self.vbox1)
+        # 2 Group
+        self.lineCountWords = QSpinBox()
+        self.lineCountWords.setButtonSymbols(2)  # NoButtons
+        self.lineCountWords.setRange(2, 500)
+        self.btnEnter = QtWidgets.QPushButton("&Вперед")
+        self.btnEnter.clicked.connect(self.click_Enter)
+        self.btnEnter.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.countWordGroup = QtWidgets.QGroupBox("&Количество слов")
+        self.countWordGroup.setEnabled(False)
+        self.vbox2 = QtWidgets.QVBoxLayout()
+        self.vbox2.addWidget(self.lineCountWords)
+        self.vbox2.addWidget(self.btnEnter)
+        self.countWordGroup.setLayout(self.vbox2)
+
+        # 3 Group
+        self.btnBuildWay = QtWidgets.QPushButton("&Построить")
+        self.btnBuildWay.clicked.connect(self.click_Build_Way)
+        self.btnBuildWay.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.wayGroup = QtWidgets.QGroupBox("К&ратчайший путь")
+        self.wayGroup.setEnabled(False)
+        self.lineEditFrom = QtWidgets.QLineEdit()
+        self.lineEditTo = QtWidgets.QLineEdit()
+        self.form = QtWidgets.QFormLayout()
+        self.form.addRow("&От", self.lineEditFrom)
+        self.form.addRow("&До", self.lineEditTo)
+        self.form.addRow(self.btnBuildWay)
+        self.wayGroup.setLayout(self.form)
+        self.txtArea = QPlainTextEdit()
+
+        # построение области графа
+        self.figure = plt.figure(figsize=(300, 500))
+        self.canvas = FigureCanvas(self.figure)
+
+        self.logArea = QtWidgets.QTextEdit()
+        self.logArea.setReadOnly(True)
+        # компановка групп в гриде
+        self.mainGrid = QtWidgets.QGridLayout()
+        self.mainGrid.addWidget(self.countSignGroup, 0, 0)
+        self.mainGrid.addWidget(self.countWordGroup, 0, 1)
+        self.mainGrid.addWidget(self.wayGroup, 0, 2)
+        self.mainGrid.addWidget(self.logArea, 0, 3)
+        self.mainGrid.addWidget(self.canvas, 1, 0, 4, 0)
+        self.setLayout(self.mainGrid)
+
+        self.show()
+
+    # далее функ-ции возврата данных из интерфейса
+    def get_lengthWord(self):
+        if self.radio2word.isChecked():
+            self.lineEditFrom.setMaxLength(2)
+            self.lineEditTo.setMaxLength(2)
+            return 2
+        else:
+            self.lineEditFrom.setMaxLength(3)
+            self.lineEditTo.setMaxLength(3)
+            return 3
+
+    def get_points(self):
+        # возвращает координаты точек для пути
+        self.From = self.lineEditFrom.text().upper()
+        self.To = self.lineEditTo.text().upper()
+        if str(self.From) not in self.cut_list:
+            self.logArea.append(str(self.From) + " нет в приведенном графе")
+            self.From = 0
+        if str(self.To) not in self.cut_list:
+            self.logArea.append(str(self.To) + " нет в приведенном графе")
+            self.To = 0
+        return self.From, self.To
+
+    # далее ф-ции нажатий клавиш
+    def click_generate(self):
+        # генерирует и помещает слова в БД
+        list_words = model.generator(self.get_lengthWord(), 500)
+        self.countWordGroup.setEnabled(True)
+        self.logArea.append(f"В БД загружены 500 сгенерированных слов длиной {str(self.get_lengthWord())} символа")
+        return model.insertDB(list_words)
+
+    def click_Enter(self):
+        # извлекает необходимые слова из БД и помещает их в ф-ию отрисовки
+        self.cut_list = model.executeDB(self.lineCountWords.value())
+        self.logArea.append(f"По {str(self.lineCountWords.value())} словам, извлеченных из БД, построен граф")
+        if self.radio2word.isChecked():
+            self.draw_graph(self.cut_list)
+            self.canvas.draw_idle()
+        else:
+            self.draw_3D(self.cut_list)
+            self.canvas.draw_idle()
+        self.wayGroup.setEnabled(True)
+
+    # далее ф-ции отрисовки
+    def draw_graph(self, cut_list):
+        # возвращает граф
+        Web2Word.G.clear()
+        self.figure.clf()
+        nodes = cut_list
+        Web2Word.G.add_nodes_from(nodes)  # Добавление вершин
+        edges = model.getEdges(nodes)
+        Web2Word.pos = model.getPos(nodes, model.getAlphabet())
+        weightedEdgesFrom = model.getWeightedEdgesFrom(edges, Web2Word.pos)
+        Web2Word.G.add_weighted_edges_from(weightedEdgesFrom)
+        # Web2Word.G.add_edges_from(edges)  # Добавление несколько ребер
+        gr = nx.draw_networkx(Web2Word.G, pos=Web2Word.pos, with_labels=True, node_size=170, font_size=8,
+                              font_color='w')
+        return gr
+
+    # def draw_3D (self):
+    # функция слизанная с примера/ пока оставить
+    #     Web2Word.G.clear()
+    #     # возвращает граф
+    #     self.figure.clf()
+    #     graph = model.gen_random_3d_graph(15, 0.6)
+    #     pos = nx.get_node_attributes(graph, 'pos')
+    #     print(pos)
+    #     with plt.style.context("bmh"):
+    #         fig = plt.figure(figsize=(10, 7))
+    #         ax = Axes3D(self.figure)
+    #         for key, value in pos.items():
+    #             xi = value[0]
+    #             yi = value[1]
+    #             zi = value[2]
+
+    #             ax.scatter(xi, yi, zi, edgecolor='b', alpha=0.9)
+    #             for i, j in enumerate(graph.edges()):
+    #                 x = np.array((pos[j[0]][0], pos[j[1]][0]))
+    #                 y = np.array((pos[j[0]][1], pos[j[1]][1]))
+    #                 z = np.array((pos[j[0]][2], pos[j[1]][2]))
+    #                 ax.plot(x, y, z, c='black', alpha=0.9)
+
+    def draw_3D(self, cut_list):
+        alphabet = model.getAlphabet()
+        Web2Word.G.clear()
+        self.figure.clf()
+        model.plot_3d_network(self.figure, cut_list, alphabet)
+
+    def click_Build_Way(self):
+        if self.radio2word.isChecked():
+
+            self.draw_graph(self.cut_list)
+            self.canvas.draw_idle()
+              # возвращает короткий путь
+            From, To = self.get_points()
+            if From and To != 0:
+                try:
+                    path = nx.single_source_dijkstra(Web2Word.G, source=From, target=To)[1]
+                    self.logArea.append(f"Короткий путь из {str(self.From)} в {str(self.To)} это {path}")
+                    # nx.draw_networkx_nodes(Web2Word.G, pos=Web2Word.pos, nodelist=[From, To],
+                    #                        node_color='g', node_size=150)  # окраска точек
+                    nx.draw_networkx_nodes(Web2Word.G, pos=Web2Word.pos, nodelist=path,
+                                           node_color='g', node_size=150)  # окраска точек
+                    path_edges = zip(path, path[1:])
+                    path_edges = set(path_edges)
+
+                    nx.draw_networkx_edges(Web2Word.G, pos=Web2Word.pos, edgelist=path_edges, edge_color='r',
+                                           width=2)  # окраска пути
+
+                    self.canvas.draw_idle()
+                except:
+                    self.logArea.append(f"{str(From)} - {str(To)} такой путь построить невозможно")
+        else: #пофиксить это условие
+            Web2Word.G.clear()
+            edges = model.get3DEdges(self.cut_list)
+            pos = model.get3DPos(self.cut_list, model.getAlphabet())
+            print('POS###' + str(pos))
+            # Web2Word.G.pos = model.get3DPos(self.cut_list, model.getAlphabet())
+
+            weightedEdgesFrom = model.getWeightedEdgesFrom3D(edges, pos) #краш на этой строке
+            # Web2Word.G.add_nodes_from(self.cut_list)
+            # Web2Word.G.add_weighted_edges_from(weightedEdgesFrom)
+
+
