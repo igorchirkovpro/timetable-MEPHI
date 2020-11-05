@@ -1,0 +1,259 @@
+import string
+import random
+import sqlite3
+import networkx as nx
+
+def generator(length_word, count_word):
+    list_words = []
+    count = 0
+    while count != count_word:
+        word = ''.join(random.choice(string.ascii_uppercase) for sign in range(length_word))
+        if word in list_words:
+            continue
+        else:
+            list_words.append(word)
+            count += 1
+    print(list_words)
+    return list_words
+
+def getAlphabet():
+    return dict(A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, I=8, J=9,
+                K=10, L=11, M=12, N=13, O=14, P=15, Q=16, R=17,
+                S=18, T=19, U=20, V=21, W=22, X=23, Y=24, Z=25)
+
+def getPos(list, alphabet):
+    pos = {}
+    for node in list:
+        x = alphabet[node[0]]
+        y = alphabet[node[1]]
+        pos[node] = (x, y)
+    return pos
+
+def get3DPos(list, alphabet):
+    pos = {}
+    for node in list:
+        x = alphabet[node[0]]
+        y = alphabet[node[1]]
+        z = alphabet[node[2]]
+        pos[node] = (x, y, z)
+    print("#"*10 + "Это pos"+ str(pos))
+    return pos
+
+def getEdges(array):
+    array.sort()
+    edges = []
+    for i in range(0, len(array)-1):
+        if (array[i])[0] == (array[i+1])[0]:
+            edges.append((array[i], array[i+1]))
+
+    array.sort(key=lambda x: x.split()[0][1])
+    for i in range(0, len(array)-1):
+        if (array[i])[1] == (array[i+1])[1]:
+            edges.append((array[i], array[i+1]))
+
+    return edges
+
+def get3DEdges(TestList):
+    TestList.sort()
+    edges = []
+    for i in range(0, len(TestList)-1):
+        if (TestList[i])[0] == (TestList[i+1])[0] and (TestList[i])[1] == (TestList[i+1])[1]:    # по x и y
+            edges.append((TestList[i], TestList[i+1]))
+    TestList.sort(key=lambda x: x.split()[0][1])                                                 # по y и z
+    for i in range(0, len(TestList)-1):
+        for j in range(i, len(TestList) - 1):
+            if (TestList[i])[1] == (TestList[j])[1] and (TestList[i])[2] == (TestList[j])[2] and (TestList[i]) != (TestList[j]):
+                edges.append((TestList[i], TestList[j]))
+    TestList.sort(key=lambda x: x.split()[0][2])                                                 # по z и x
+    for i in range(0, len(TestList)-1):
+        for j in range(i, len(TestList) - 1):
+            if (TestList[i])[2] == (TestList[j])[2] and (TestList[i])[0] == (TestList[j])[0] and (TestList[i]) != (TestList[j]):
+                edges.append((TestList[i], TestList[j]))
+    print("#"*20 + '\n'+ str(edges))
+    return edges
+
+def getWeightedEdgesFrom(edges, pos):
+    weightedEdgesFrom = []
+    for node in edges:
+        weight = 0
+        if pos[node[0]][0] == pos[node[1]][0]:
+            if pos[node[0]][1] < pos[node[1]][1]:
+                weight = pos[node[1]][1] - pos[node[0]][1]
+            else:
+                weight = pos[node[0]][1] - pos[node[1]][1]
+        else:
+            if pos[node[0]][0] < pos[node[1]][0]:
+                weight = pos[node[1]][0] - pos[node[0]][0]
+            else:
+                weight = pos[node[0]][0] - pos[node[1]][0]
+        weightedEdgesFrom.append((node[0], node[1], weight))
+    return weightedEdgesFrom
+
+def getWeightedEdgesFrom3D(edges, pos):
+    weightedEdgesFrom = []
+    for node in edges:
+        weight = 0
+        if pos[node[0]][0] == pos[node[1]][0] and pos[node[0]][1] == pos[node[1]][1]:
+            if pos[node[0]][2] < pos[node[1]][2]:
+                weight = pos[node[1]][2] - pos[node[0]][2]
+            else:
+                weight = pos[node[0]][2] - pos[node[1]][2]
+
+        if pos[node[0]][1] == pos[node[1]][1] and pos[node[0]][2] == pos[node[1]][2]:  # по y и z
+            if pos[node[0]][0] < pos[node[1]][0]:
+                weight = pos[node[1]][0] - pos[node[0]][0]
+            else:
+                weight = pos[node[0]][0] - pos[node[1]][0]
+
+        if pos[node[0]][2] == pos[node[1]][2] and pos[node[0]][0] == pos[node[1]][0]:  # по z и x
+            if pos[node[0]][1] < pos[node[1]][1]:
+                weight = pos[node[1]][1] - pos[node[0]][1]
+            else:
+                weight = pos[node[0]][1] - pos[node[1]][1]
+        weightedEdgesFrom.append((node[0], node[1], weight))
+    print("#"*20 + '\n' + str(weightedEdgesFrom))
+    return weightedEdgesFrom
+
+
+def insertDB(list_words):
+    conn = sqlite3.connect("web2word.db")
+    cursor = conn.cursor()
+    #Загружаем в БД
+    #cursor.execute("""CREATE TABLE words (id integer primary key, word text not     null)""")
+    delete_old_records = "DROP TABLE words"
+    cursor.execute(delete_old_records)
+
+    cursor.execute("""CREATE TABLE words (id integer primary key, word text not     null)""")
+    for i in range (len(list_words)):
+        cursor.execute("""INSERT INTO words VALUES (""" + str(i) + """, '""" +  list_words[i] +"""')""")
+
+    conn.commit()
+
+def deleteTable():
+    #  удаление данных из БД
+    conn = sqlite3.connect("web2word.db")
+    cursor = conn.cursor()
+    delete_old_records = "DROP TABLE words"
+    cursor.execute(delete_old_records)
+    conn.commit()
+
+def executeDB(countWord):
+    # Выгружаем из БД
+    conn = sqlite3.connect("web2word.db")
+    cursor = conn.cursor()
+    sql = "SELECT * FROM words"
+    cursor.execute(sql)
+    cut_list = []
+    for record, i in zip(cursor.fetchall(), range(countWord)):
+        cut_list.append(record[1])
+    print(cut_list)
+    return cut_list
+
+# пока оставить для тестов
+TestList = ['UAN', 'UBR', 'PXH', 'LAH', 'NMC', 'YMC', 'EYI', 'GOB', 'QHL', 'TJZ', 'YUQ', 'YXL', 'XXU', 'LGI', 'GFE', 'CZY', 'WFH', 'WAQ',
+            'QXB', 'DZD', 'LHX', 'USP', 'GOU', 'AOU', 'ULC', 'NYT', 'WFP', 'YDH', 'YDJ', 'LXP', 'XAV', 'XMV', 'UZB', 'CBK', 'HGS',
+            'SUE', 'JYV', 'KAY','ZAY', 'SQD', 'GVC', 'RPK', 'FHP', 'XJE', 'SRZ']
+
+def plot_3d_network(fig, TestList, alphabet):
+    x = []
+    y = []
+    z = []
+    x_count = 0
+    y_count = 0
+    z_count = 0
+    number_of_nodes = len(TestList)
+    for i in TestList:        # находим все X координаты
+        for j in alphabet:
+            x_count += 1
+            if i[0] == j:
+                x.append(x_count)
+                x_count = 0
+                break
+
+    for i in TestList:        # находим все Y координаты
+        for j in alphabet:
+            y_count += 1
+            if i[1] == j:
+                y.append(y_count)
+                y_count = 0
+                break
+
+    for i in TestList:        # находим все Z координаты
+        for j in alphabet:
+            z_count += 1
+            if i[2] == j:
+                z.append(z_count)
+                z_count = 0
+                break
+
+    pos = {i: (x[i], y[i], z[i]) for i in range(number_of_nodes)}   # номер узла и его координаты
+    graph = nx.random_geometric_graph(number_of_nodes, radius=0.6, pos=pos)
+    pos = nx.get_node_attributes(graph, 'pos')
+
+    ax = Axes3D(fig)
+
+    i = 0  # x и y равны. Соединяем по z
+    j = 1
+    for q in x:
+        i += 1
+        j = i
+        for w in x[i:]:
+            j += 1
+            if q == w:
+                if y[i - 1] == y[j - 1]:
+                    plt.plot([x[i - 1], x[j - 1]], [y[i - 1], y[j - 1]], [z[i - 1], z[j - 1]], color='blue')
+
+    i = 0  # y и z равны. Соединяем по x
+    j = 1
+    for q in y:
+        i += 1
+        j = i
+        for w in y[i:]:
+            j += 1
+            if q == w:
+                if z[i - 1] == z[j - 1]:
+                    plt.plot([x[i - 1], x[j - 1]], [y[i - 1], y[j - 1]], [z[i - 1], z[j - 1]], color='blue')
+
+    i = 0  # z и x равны. Соединяем по y
+    j = 1
+    for q in z:
+        i += 1
+        j = i
+        for w in z[i:]:
+            j += 1
+            if q == w:
+                if x[i - 1] == x[j - 1]:
+                    plt.plot([x[i - 1], x[j - 1]], [y[i - 1], y[j - 1]], [z[i - 1], z[j - 1]], color='blue')
+
+    # short_way = ['GOB', 'GOU', 'AOU']     # список с коротким way и его прорисовка
+    # print(short_way)
+    # for i in range(0, len(short_way)-1):
+    #     x1 = alphabet[short_way[i][0]] + 1
+    #     y1 = alphabet[short_way[i][1]] + 1
+    #     z1 = alphabet[short_way[i][2]] + 1
+    #     x2 = alphabet[short_way[i+1][0]] + 1
+    #     y2 = alphabet[short_way[i+1][1]] + 1
+    #     z2 = alphabet[short_way[i+1][2]] + 1
+    #     plt.plot([x1, x2], [y1, y2], [z1, z2], color='red')
+
+    j = 0        # подпись узлов
+    for i in TestList:
+        ax.text(x[j], y[j], z[j], i)
+        j += 1
+
+    ax.scatter(x, y, z)
+
+# # тест функций модели, тест вроде проходит
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt
+# g = nx.Graph()
+# pos = None
+# edges = get3DEdges(TestList)
+# pos = get3DPos(TestList, getAlphabet())
+# weightedEdgesFrom = getWeightedEdgesFrom3D(edges, len(TestList))
+# g.add_weighted_edges_from(weightedEdgesFrom)
+# n_nodes = len(TestList)
+# print(n_nodes)
+# # g = nx.random_geometric_graph(len(TestList), radius=0.6, dim=3)
+# path = nx.single_source_dijkstra(g, source='NMC', target='YMC')[1]
+# print('short path:' + str(path))
